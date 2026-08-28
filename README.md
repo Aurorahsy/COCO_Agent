@@ -111,6 +111,7 @@ Model:    deepseek-chat
 ```
 
 API Key 输入时不会显示。配置成功后，后续启动会自动复用，不需要重复输入。
+保存前 Agent 会先验证服务地址、模型和 API Key；验证失败不会覆盖已有配置。
 
 如果找不到 `coco-agent` 命令，可以使用等价入口：
 
@@ -162,12 +163,10 @@ coco-agent config path
 配置文件固定保存在代码仓库之外：
 
 ```text
-%APPDATA%\coco_agent\config.json
+Windows  %APPDATA%\coco_agent\config.json
+Linux    ${XDG_CONFIG_HOME:-~/.config}/coco_agent/config.json
+macOS    ~/Library/Application Support/coco_agent/config.json
 ```
 
-在当前 Windows 用户下一般对应：
-
-```text
-C:\Users\<用户名>\AppData\Roaming\coco_agent\config.json
-```
+配置文件包含 API Key 真值，请勿分享、上传或加入版本控制。`config show`、日志和错误消息不会显示该真值。
 

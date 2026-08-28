@@ -25,6 +25,13 @@ class LLMInterpreter:
 
     def handle(self, user_message: str) -> str:
         self.messages.append({"role": "user", "content": user_message})
+        return self.resume()
+
+    def replace_llm(self, llm: LLMClient) -> None:
+        self._llm = llm
+
+    def resume(self) -> str:
+        """Resume the current logical turn without appending a duplicate user message."""
         for _ in range(self._max_turns):
             turn = self._llm.complete(self.messages, self._tools.definitions())
             assistant_message: dict[str, Any] = {

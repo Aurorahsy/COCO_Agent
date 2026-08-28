@@ -21,6 +21,7 @@ from .configuration import (
     save_settings,
 )
 from .conversation import LLMInterpreter, OpenAICompatibleLLM
+from .conversation.openai_compat import LLMServiceError
 from .conversation.skill import load_tuning_skill
 from .conversation.tuning_tools import TuningToolset
 from .demo import (
@@ -74,23 +75,71 @@ def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpas
                     return 0
                 if not user_message:
                     continue
-                output_fn(f"Agent> {interpreter.handle(user_message)}")
+                retrying = False
+                while True:
+                    try:
+                        response = (
+                            interpreter.resume()
+                            if retrying
+                            else interpreter.handle(user_message)
+                        )
+                        output_fn(f"Agent> {response}")
+                        break
+                    except LLMServiceError as exc:
+                        output_fn(f"Agent> {exc}")
+                        try:
+                            action = input_fn(
+                                "选择操作：[r] 重试  [c] 重新配置  [q] 退出："
+                            ).strip().lower()
+                        except (EOFError, KeyboardInterrupt):
+                            output_fn("")
+                            return 0
+                        if action in {"q", "quit", "exit", "退出"}:
+                            return 0
+                        if action in {"c", "config", "配置"}:
+                            try:
+                                configure(
+                                    input_fn=input_fn,
+                                    secret_fn=secret_fn,
+                                    output_fn=output_fn,
+                                )
+                                replacement = OpenAICompatibleLLM.from_settings(
+                                    load_settings()
+                                )
+                                interpreter.replace_llm(replacement)
+                            except LLMServiceError as config_error:
+                                output_fn(f"Agent> 新配置验证失败：{config_error}")
+                                continue
+                        elif action not in {"r", "retry", "重试"}:
+                            output_fn("Agent> 无法识别该操作，请选择 r、c 或 q。")
+                            continue
+                        retrying = True
 
 
-def configure(input_fn=input, secret_fn=getpass.getpass, output_fn=print) -> int:
+def configure(
+    input_fn=input,
+    secret_fn=getpass.getpass,
+    output_fn=print,
+    validator=None,
+) -> int:
     path = config_path()
     output_fn(f"配置将保存到：{path}")
-    output_fn("API Key 使用 Windows DPAPI 加密；输入内容不会显示或写入日志。")
+    output_fn("API Key 输入内容不会显示，也不会写入日志或配置状态输出。")
     base_url = input_fn("OpenAI-compatible Base URL [https://api.openai.com/v1]: ").strip()
     model = input_fn("模型名称 [gpt-4.1-mini]: ").strip()
     api_key = secret_fn("模型服务 API Key（隐藏输入）: ").strip()
-    save_settings(LLMSettings(
+    candidate = LLMSettings(
         base_url=base_url or "https://api.openai.com/v1",
         model=model or "gpt-4.1-mini",
         api_key=api_key,
-    ))
+    )
+    output_fn("正在验证模型服务配置……")
+    if validator is None:
+        validator = lambda settings: OpenAICompatibleLLM.from_settings(settings).probe()
+    validator(candidate)
+    save_settings(candidate)
     output_fn(f"配置已保存：{path}")
-    output_fn("未记录 API Key 真值；show 命令只显示加密状态。")
+    output_fn("show 命令不会显示 API Key 真值。")
     return 0
 
 
@@ -118,7 +167,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         return configure()
     except RuntimeError as exc:
-        parser.error(str(exc))
+        parser.exit(1, f"coco-agent: error: {exc}\n")
 
 
 if __name__ == "__main__":

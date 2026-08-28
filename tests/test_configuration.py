@@ -15,7 +15,9 @@ def fake_dpapi(monkeypatch):
     )
 
 
-def test_single_external_config_is_encrypted_and_overwritten(tmp_path, monkeypatch):
+def test_single_external_config_is_overwritten_and_secret_is_never_displayed(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     fake_dpapi(monkeypatch)
     secret = "test-credential-value"
@@ -24,9 +26,12 @@ def test_single_external_config_is_encrypted_and_overwritten(tmp_path, monkeypat
     assert first == second
     assert list(first.parent.glob("*.json")) == [first]
     raw = first.read_text(encoding="utf-8")
-    assert secret not in raw
+    assert json.loads(raw)["api_key"] == secret
     assert json.loads(raw)["model"] == "model-b"
     assert load_settings().api_key == secret
+    shown = []
+    assert show_configuration(shown.append) == 0
+    assert secret not in "\n".join(shown)
 
 
 def test_config_cli_never_prints_secret(tmp_path, monkeypatch):
@@ -35,12 +40,17 @@ def test_config_cli_never_prints_secret(tmp_path, monkeypatch):
     output = []
     answers = iter(["", ""])
     secret = "test-credential-never-log"
-    assert configure(lambda _prompt: next(answers), lambda _prompt: secret, output.append) == 0
+    assert configure(
+        lambda _prompt: next(answers),
+        lambda _prompt: secret,
+        output.append,
+        validator=lambda _settings: None,
+    ) == 0
     assert secret not in "\n".join(output)
     shown = []
     assert show_configuration(shown.append) == 0
     assert secret not in "\n".join(shown)
-    assert "DPAPI" in "\n".join(shown)
+    assert "已配置" in "\n".join(shown)
 
 
 def test_first_chat_launch_configures_once_then_reuses(tmp_path, monkeypatch):
@@ -48,6 +58,9 @@ def test_first_chat_launch_configures_once_then_reuses(tmp_path, monkeypatch):
     fake_dpapi(monkeypatch)
 
     class GreetingLLM:
+        def probe(self):
+            return None
+
         def complete(self, messages, tools):
             return AssistantTurn("你好，我已经准备好了。")
 
@@ -102,3 +115,19 @@ def test_legacy_config_is_moved_to_single_coco_agent_location(tmp_path, monkeypa
     assert canonical.is_file()
     assert not legacy.exists()
     assert len(list(tmp_path.rglob("config.json"))) == 1
+
+
+def test_linux_uses_xdg_config_home(tmp_path, monkeypatch):
+    monkeypatch.setattr(configuration.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("APPDATA", raising=False)
+    path = save_settings(LLMSettings("https://example.com/v1", "model", "secret"))
+    assert path == tmp_path / "coco_agent" / "config.json"
+    assert load_settings().api_key == "secret"
+
+
+def test_macos_uses_application_support(tmp_path, monkeypatch):
+    monkeypatch.setattr(configuration.sys, "platform", "darwin")
+    monkeypatch.setattr(configuration.Path, "home", lambda: tmp_path)
+    path = configuration.config_path()
+    assert path == tmp_path / "Library" / "Application Support" / "coco_agent" / "config.json"
