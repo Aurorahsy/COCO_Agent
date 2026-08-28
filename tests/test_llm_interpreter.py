@@ -4,10 +4,11 @@ import json
 
 import pytest
 
-from deployopt_agent.cli import run_chat
-from deployopt_agent.conversation.interpreter import LLMInterpreter
-from deployopt_agent.conversation.models import AssistantTurn, ToolCall
-from deployopt_agent.conversation.tools import RegisteredTool, ToolRegistry
+from coco_agent.cli import run_chat
+from coco_agent.conversation.interpreter import LLMInterpreter
+from coco_agent.conversation.models import AssistantTurn, ToolCall
+from coco_agent.conversation.openai_compat import ServiceTimeout
+from coco_agent.conversation.tools import RegisteredTool, ToolRegistry
 
 
 class TuningScriptedLLM:
@@ -61,6 +62,28 @@ def test_cli_executes_llm_function_call_chain():
         "submit_tuning_task",
         "run_tuning_task",
     ]
+
+
+def test_cli_uses_minimal_prompt_and_displays_model_reasoning():
+    class ReasoningLLM:
+        def complete(self, messages, tools):
+            return AssistantTurn("可以开始。", reasoning="先确认用户目标。")
+
+    prompts = []
+    answers = iter(["开始", "/exit"])
+    output = []
+
+    assert run_chat(
+        ReasoningLLM(),
+        lambda prompt: prompts.append(prompt) or next(answers),
+        output.append,
+    ) == 0
+    assert prompts == ["❯ ", "❯ "]
+    rendered = "\n".join(output)
+    assert "You>" not in rendered
+    assert "Agent>" not in rendered
+    assert "思考  先确认用户目标。" in rendered
+    assert "● coco\n  可以开始。" in rendered
 
 
 class InvalidThenRecoveringLLM:
@@ -126,3 +149,45 @@ def test_loop_has_hard_turn_limit():
     )
     with pytest.raises(RuntimeError, match="exceeded 2 turns"):
         interpreter.handle("loop")
+
+
+def test_cli_retries_timeout_without_duplicating_user_message():
+    class TimeoutThenSuccessLLM:
+        def __init__(self):
+            self.calls = 0
+            self.seen_messages = []
+
+        def complete(self, messages, tools):
+            self.calls += 1
+            self.seen_messages = list(messages)
+            if self.calls == 1:
+                raise ServiceTimeout("模型服务响应超时，请稍后重试。")
+            return AssistantTurn("恢复成功。")
+
+    llm = TimeoutThenSuccessLLM()
+    answers = iter(["你好", "r", "exit"])
+    output = []
+    assert run_chat(llm, lambda _prompt: next(answers), output.append) == 0
+    assert llm.calls == 2
+    assert [message["content"] for message in llm.seen_messages if message["role"] == "user"] == ["你好"]
+    assert "恢复成功" in "\n".join(output)
+
+
+def test_configuration_is_saved_only_after_validation(tmp_path, monkeypatch):
+    from coco_agent import configuration
+    from coco_agent.cli import configure
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    answers = iter(["https://example.com/v1", "model"])
+
+    def reject(_settings):
+        raise ServiceTimeout("validation timeout")
+
+    with pytest.raises(ServiceTimeout):
+        configure(
+            input_fn=lambda _prompt: next(answers),
+            secret_fn=lambda _prompt: "secret",
+            output_fn=lambda _message: None,
+            validator=reject,
+        )
+    assert not configuration.config_path().exists()

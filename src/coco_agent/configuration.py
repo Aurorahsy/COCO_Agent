@@ -1,4 +1,4 @@
-"""Single, repository-external LLM configuration with Windows DPAPI protection."""
+"""Single, repository-external, cross-platform LLM configuration."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import base64
 import ctypes
 import json
 import os
+import sys
 import tempfile
 from ctypes import wintypes
 from dataclasses import dataclass
@@ -20,12 +21,19 @@ CRYPTPROTECT_UI_FORBIDDEN = 0x1
 
 
 def config_path() -> Path:
-    appdata = os.environ.get("APPDATA")
-    root = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        root = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+        root = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
     return root / APP_DIRECTORY / CONFIG_FILENAME
 
 
 def legacy_config_path() -> Path:
+    """Return the former Windows-only configuration location."""
     appdata = os.environ.get("APPDATA")
     root = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
     return root / LEGACY_APP_DIRECTORY / CONFIG_FILENAME
@@ -34,6 +42,8 @@ def legacy_config_path() -> Path:
 def migrate_legacy_config() -> Path:
     """Move the former single config to the canonical coco_agent location."""
     target = config_path()
+    if sys.platform != "win32":
+        return target
     legacy = legacy_config_path()
     if target.is_file() or not legacy.is_file():
         return target
@@ -161,12 +171,14 @@ def save_settings(settings: LLMSettings) -> Path:
         raise ValueError("base_url、model 和 api_key 均不能为空")
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        path.parent.chmod(0o700)
     payload = {
-        "version": 1,
+        "version": 2,
         "provider": "openai_compatible",
         "base_url": settings.base_url.rstrip("/"),
         "model": settings.model,
-        "api_key_dpapi": _protect(settings.api_key),
+        "api_key": settings.api_key,
         "updated_at": datetime.now(UTC).isoformat(),
     }
     # One canonical file only: atomic replacement, with no history or backup containing secrets.
@@ -177,6 +189,8 @@ def save_settings(settings: LLMSettings) -> Path:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
         os.replace(temporary_name, path)
+        if os.name != "nt":
+            path.chmod(0o600)
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
@@ -186,14 +200,22 @@ def save_settings(settings: LLMSettings) -> Path:
 def load_settings() -> LLMSettings:
     path = migrate_legacy_config()
     if not path.is_file():
-        raise RuntimeError(f"尚未配置模型服务。请运行 coco-agent config。配置文件：{path}")
+        raise RuntimeError(f"尚未配置模型服务。请运行 coco config。配置文件：{path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("version") != 1 or "api_key_dpapi" not in payload:
+    if payload.get("version") == 1 and "api_key_dpapi" in payload:
+        settings = LLMSettings(
+            base_url=payload["base_url"],
+            model=payload["model"],
+            api_key=_unprotect(payload["api_key_dpapi"]),
+        )
+        save_settings(settings)
+        return settings
+    if payload.get("version") != 2 or "api_key" not in payload:
         raise RuntimeError(f"配置文件格式无效：{path}")
     return LLMSettings(
         base_url=payload["base_url"],
         model=payload["model"],
-        api_key=_unprotect(payload["api_key_dpapi"]),
+        api_key=payload["api_key"],
     )
 
 
@@ -208,6 +230,6 @@ def public_settings() -> dict[str, str | bool]:
         "provider": payload.get("provider", "unknown"),
         "base_url": payload.get("base_url", ""),
         "model": payload.get("model", ""),
-        "api_key": "已使用 Windows DPAPI 加密（不显示真值）",
+        "api_key": "已配置（不显示真值）",
         "updated_at": payload.get("updated_at", ""),
     }

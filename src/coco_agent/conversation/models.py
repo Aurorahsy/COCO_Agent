@@ -17,6 +17,7 @@ class ToolCall:
 class AssistantTurn:
     content: str | None = None
     tool_calls: tuple[ToolCall, ...] = field(default_factory=tuple)
+    reasoning: str | None = None
 
 
 class LLMClient(Protocol):

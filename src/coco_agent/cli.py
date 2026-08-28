@@ -21,6 +21,7 @@ from .configuration import (
     save_settings,
 )
 from .conversation import LLMInterpreter, OpenAICompatibleLLM
+from .conversation.openai_compat import LLMServiceError
 from .conversation.skill import load_tuning_skill
 from .conversation.tuning_tools import TuningToolset
 from .demo import (
@@ -31,6 +32,7 @@ from .demo import (
     SimpleReportBuilder,
 )
 from .graph_app import TuningApplication
+from .terminal import TerminalRenderer
 
 
 def _application(checkpointer, root: Path) -> TuningApplication:
@@ -46,6 +48,7 @@ def _application(checkpointer, root: Path) -> TuningApplication:
 
 
 def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpass) -> int:
+    renderer = TerminalRenderer(output_fn, animate=input_fn is input and output_fn is print)
     if llm is None:
         if not is_configured():
             output_fn("首次启动：尚未发现模型配置，现在进行一次性初始化。")
@@ -53,9 +56,8 @@ def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpas
         settings = load_settings()
         llm = OpenAICompatibleLLM.from_settings(settings)
         output_fn(f"已加载持久化模型配置：{config_path()}")
-    output_fn("coco_agent（LLM Function-Call Slice 0）")
-    output_fn("输入 exit 结束会话。")
-    with tempfile.TemporaryDirectory(prefix="deployopt_chat_") as temp_dir:
+    output_fn("COCO_Agent  ·  输入 /exit 结束会话")
+    with tempfile.TemporaryDirectory(prefix="coco_agent_chat_") as temp_dir:
         root = Path(temp_dir)
         with SqliteSaver.from_conn_string(str(root / "checkpoints.sqlite")) as saver:
             toolset = TuningToolset(_application(saver, root))
@@ -66,31 +68,81 @@ def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpas
             )
             while True:
                 try:
-                    user_message = input_fn("You> ").strip()
+                    user_message = input_fn(renderer.prompt()).strip()
                 except (EOFError, KeyboardInterrupt):
                     output_fn("")
                     return 0
-                if user_message.lower() in {"exit", "quit", "退出"}:
+                if user_message.lower() in {"/exit", "exit", "quit", "退出"}:
                     return 0
                 if not user_message:
                     continue
-                output_fn(f"Agent> {interpreter.handle(user_message)}")
+                retrying = False
+                while True:
+                    try:
+                        with renderer.thinking():
+                            response = (
+                                interpreter.resume()
+                                if retrying
+                                else interpreter.handle(user_message)
+                            )
+                        renderer.events(interpreter.last_events)
+                        renderer.response(response)
+                        break
+                    except LLMServiceError as exc:
+                        renderer.error(str(exc))
+                        try:
+                            action = input_fn(
+                                "选择操作：[r] 重试  [c] 重新配置  [q] 退出："
+                            ).strip().lower()
+                        except (EOFError, KeyboardInterrupt):
+                            output_fn("")
+                            return 0
+                        if action in {"q", "quit", "exit", "退出"}:
+                            return 0
+                        if action in {"c", "config", "配置"}:
+                            try:
+                                configure(
+                                    input_fn=input_fn,
+                                    secret_fn=secret_fn,
+                                    output_fn=output_fn,
+                                )
+                                replacement = OpenAICompatibleLLM.from_settings(
+                                    load_settings()
+                                )
+                                interpreter.replace_llm(replacement)
+                            except LLMServiceError as config_error:
+                                renderer.error(f"新配置验证失败：{config_error}")
+                                continue
+                        elif action not in {"r", "retry", "重试"}:
+                            renderer.error("无法识别该操作，请选择 r、c 或 q。")
+                            continue
+                        retrying = True
 
 
-def configure(input_fn=input, secret_fn=getpass.getpass, output_fn=print) -> int:
+def configure(
+    input_fn=input,
+    secret_fn=getpass.getpass,
+    output_fn=print,
+    validator=None,
+) -> int:
     path = config_path()
     output_fn(f"配置将保存到：{path}")
-    output_fn("API Key 使用 Windows DPAPI 加密；输入内容不会显示或写入日志。")
+    output_fn("API Key 输入内容不会显示，也不会写入日志或配置状态输出。")
     base_url = input_fn("OpenAI-compatible Base URL [https://api.openai.com/v1]: ").strip()
     model = input_fn("模型名称 [gpt-4.1-mini]: ").strip()
     api_key = secret_fn("模型服务 API Key（隐藏输入）: ").strip()
-    save_settings(LLMSettings(
+    candidate = LLMSettings(
         base_url=base_url or "https://api.openai.com/v1",
         model=model or "gpt-4.1-mini",
         api_key=api_key,
-    ))
+    )
+    output_fn("正在验证模型服务配置……")
+    if validator is None:
+        validator = lambda settings: OpenAICompatibleLLM.from_settings(settings).probe()
+    validator(candidate)
+    save_settings(candidate)
     output_fn(f"配置已保存：{path}")
-    output_fn("未记录 API Key 真值；show 命令只显示加密状态。")
+    output_fn("show 命令不会显示 API Key 真值。")
     return 0
 
 
@@ -100,7 +152,7 @@ def show_configuration(output_fn=print) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="coco-agent")
+    parser = argparse.ArgumentParser(prog="coco")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("chat", help="start LLM tool-calling conversation")
     config_parser = subcommands.add_parser("config", help="configure persistent LLM access")
@@ -118,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         return configure()
     except RuntimeError as exc:
-        parser.error(str(exc))
+        parser.exit(1, f"coco: error: {exc}\n")
 
 
 if __name__ == "__main__":
