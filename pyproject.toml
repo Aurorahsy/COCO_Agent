@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "coco-agent-runtime"
+name = "coco-agent"
 version = "0.1.0"
 description = "Public LangGraph runtime and contracts for coco_agent"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-coco-agent = "deployopt_agent.cli:main"
+coco = "coco_agent.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
@@ -23,7 +23,7 @@ test = ["pytest>=8,<9"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-deployopt_agent = ["skills/**/*.md"]
+coco_agent = ["skills/**/*.md"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

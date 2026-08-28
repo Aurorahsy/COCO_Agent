@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 
-from deployopt_agent import configuration
-from deployopt_agent.cli import configure, run_chat, show_configuration
-from deployopt_agent.conversation.models import AssistantTurn
-from deployopt_agent.configuration import LLMSettings, load_settings, save_settings
+from coco_agent import configuration
+from coco_agent.cli import configure, run_chat, show_configuration
+from coco_agent.conversation.models import AssistantTurn
+from coco_agent.configuration import LLMSettings, load_settings, save_settings
 
 
 def fake_dpapi(monkeypatch):
@@ -65,7 +65,7 @@ def test_first_chat_launch_configures_once_then_reuses(tmp_path, monkeypatch):
             return AssistantTurn("你好，我已经准备好了。")
 
     monkeypatch.setattr(
-        "deployopt_agent.cli.OpenAICompatibleLLM.from_settings",
+        "coco_agent.cli.OpenAICompatibleLLM.from_settings",
         lambda _settings: GreetingLLM(),
     )
     first_answers = iter([

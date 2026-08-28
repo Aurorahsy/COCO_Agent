@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from deployopt_agent.conversation.openai_compat import (
+from coco_agent.conversation.openai_compat import (
     LLMServiceError,
     OpenAICompatibleLLM,
     ServiceTimeout,
@@ -30,7 +30,7 @@ def test_429_is_converted_to_actionable_safe_error(monkeypatch):
             body,
         )
 
-    monkeypatch.setattr("deployopt_agent.conversation.openai_compat.urlopen", fail)
+    monkeypatch.setattr("coco_agent.conversation.openai_compat.urlopen", fail)
     client = OpenAICompatibleLLM(
         base_url="https://api.openai.com/v1",
         model="test-model",
@@ -55,7 +55,7 @@ def test_504_is_classified_as_recoverable_timeout(monkeypatch):
             BytesIO(b"Gateway Time-out"),
         )
 
-    monkeypatch.setattr("deployopt_agent.conversation.openai_compat.urlopen", fail)
+    monkeypatch.setattr("coco_agent.conversation.openai_compat.urlopen", fail)
     client = OpenAICompatibleLLM(
         base_url="https://example.com/v1", model="model", api_key="secret"
     )
@@ -67,7 +67,7 @@ def test_network_timeout_is_classified_without_leaking_secret(monkeypatch):
     def fail(*_args, **_kwargs):
         raise URLError(TimeoutError("timed out"))
 
-    monkeypatch.setattr("deployopt_agent.conversation.openai_compat.urlopen", fail)
+    monkeypatch.setattr("coco_agent.conversation.openai_compat.urlopen", fail)
     client = OpenAICompatibleLLM(
         base_url="https://example.com/v1", model="model", api_key="secret-value"
     )
@@ -88,7 +88,7 @@ def test_non_json_response_is_classified(monkeypatch):
             return b"not-json"
 
     monkeypatch.setattr(
-        "deployopt_agent.conversation.openai_compat.urlopen",
+        "coco_agent.conversation.openai_compat.urlopen",
         lambda *_args, **_kwargs: Response(),
     )
     client = OpenAICompatibleLLM(

@@ -8,16 +8,16 @@ from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from deployopt_agent.capabilities import MockTuningCapability, SqliteOperationStore
-from deployopt_agent.domain.contracts import Criterion, GoalSpec
-from deployopt_agent.demo import (
+from coco_agent.capabilities import MockTuningCapability, SqliteOperationStore
+from coco_agent.domain.contracts import Criterion, GoalSpec
+from coco_agent.demo import (
     AllowLowRiskActions,
     DoubleConcurrencyPolicy,
     InMemoryExperience,
     NumericGoalVerifier,
     SimpleReportBuilder,
 )
-from deployopt_agent.graph_app import TuningApplication
+from coco_agent.graph_app import TuningApplication
 
 
 def main() -> None:

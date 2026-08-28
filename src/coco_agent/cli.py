@@ -32,6 +32,7 @@ from .demo import (
     SimpleReportBuilder,
 )
 from .graph_app import TuningApplication
+from .terminal import TerminalRenderer
 
 
 def _application(checkpointer, root: Path) -> TuningApplication:
@@ -47,6 +48,7 @@ def _application(checkpointer, root: Path) -> TuningApplication:
 
 
 def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpass) -> int:
+    renderer = TerminalRenderer(output_fn, animate=input_fn is input and output_fn is print)
     if llm is None:
         if not is_configured():
             output_fn("首次启动：尚未发现模型配置，现在进行一次性初始化。")
@@ -54,9 +56,8 @@ def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpas
         settings = load_settings()
         llm = OpenAICompatibleLLM.from_settings(settings)
         output_fn(f"已加载持久化模型配置：{config_path()}")
-    output_fn("coco_agent（LLM Function-Call Slice 0）")
-    output_fn("输入 exit 结束会话。")
-    with tempfile.TemporaryDirectory(prefix="deployopt_chat_") as temp_dir:
+    output_fn("COCO_Agent  ·  输入 /exit 结束会话")
+    with tempfile.TemporaryDirectory(prefix="coco_agent_chat_") as temp_dir:
         root = Path(temp_dir)
         with SqliteSaver.from_conn_string(str(root / "checkpoints.sqlite")) as saver:
             toolset = TuningToolset(_application(saver, root))
@@ -67,26 +68,28 @@ def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpas
             )
             while True:
                 try:
-                    user_message = input_fn("You> ").strip()
+                    user_message = input_fn(renderer.prompt()).strip()
                 except (EOFError, KeyboardInterrupt):
                     output_fn("")
                     return 0
-                if user_message.lower() in {"exit", "quit", "退出"}:
+                if user_message.lower() in {"/exit", "exit", "quit", "退出"}:
                     return 0
                 if not user_message:
                     continue
                 retrying = False
                 while True:
                     try:
-                        response = (
-                            interpreter.resume()
-                            if retrying
-                            else interpreter.handle(user_message)
-                        )
-                        output_fn(f"Agent> {response}")
+                        with renderer.thinking():
+                            response = (
+                                interpreter.resume()
+                                if retrying
+                                else interpreter.handle(user_message)
+                            )
+                        renderer.events(interpreter.last_events)
+                        renderer.response(response)
                         break
                     except LLMServiceError as exc:
-                        output_fn(f"Agent> {exc}")
+                        renderer.error(str(exc))
                         try:
                             action = input_fn(
                                 "选择操作：[r] 重试  [c] 重新配置  [q] 退出："
@@ -108,10 +111,10 @@ def run_chat(llm=None, input_fn=input, output_fn=print, secret_fn=getpass.getpas
                                 )
                                 interpreter.replace_llm(replacement)
                             except LLMServiceError as config_error:
-                                output_fn(f"Agent> 新配置验证失败：{config_error}")
+                                renderer.error(f"新配置验证失败：{config_error}")
                                 continue
                         elif action not in {"r", "retry", "重试"}:
-                            output_fn("Agent> 无法识别该操作，请选择 r、c 或 q。")
+                            renderer.error("无法识别该操作，请选择 r、c 或 q。")
                             continue
                         retrying = True
 
@@ -149,7 +152,7 @@ def show_configuration(output_fn=print) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="coco-agent")
+    parser = argparse.ArgumentParser(prog="coco")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("chat", help="start LLM tool-calling conversation")
     config_parser = subcommands.add_parser("config", help="configure persistent LLM access")
@@ -167,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         return configure()
     except RuntimeError as exc:
-        parser.exit(1, f"coco-agent: error: {exc}\n")
+        parser.exit(1, f"coco: error: {exc}\n")
 
 
 if __name__ == "__main__":

@@ -200,7 +200,7 @@ def save_settings(settings: LLMSettings) -> Path:
 def load_settings() -> LLMSettings:
     path = migrate_legacy_config()
     if not path.is_file():
-        raise RuntimeError(f"尚未配置模型服务。请运行 coco-agent config。配置文件：{path}")
+        raise RuntimeError(f"尚未配置模型服务。请运行 coco config。配置文件：{path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("version") == 1 and "api_key_dpapi" in payload:
         settings = LLMSettings(

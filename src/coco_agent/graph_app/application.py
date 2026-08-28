@@ -1,4 +1,4 @@
-"""LangGraph-backed Slice 0 TuningApplication."""
+"""LangGraph-backed tuning workflow application."""
 
 from __future__ import annotations
 

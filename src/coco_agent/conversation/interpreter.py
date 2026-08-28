@@ -22,8 +22,10 @@ class LLMInterpreter:
         self._tools = tools
         self._max_turns = max_turns
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": skill}]
+        self.last_events: list[tuple[str, str]] = []
 
     def handle(self, user_message: str) -> str:
+        self.last_events = []
         self.messages.append({"role": "user", "content": user_message})
         return self.resume()
 
@@ -34,6 +36,8 @@ class LLMInterpreter:
         """Resume the current logical turn without appending a duplicate user message."""
         for _ in range(self._max_turns):
             turn = self._llm.complete(self.messages, self._tools.definitions())
+            if turn.reasoning:
+                self.last_events.append(("reasoning", turn.reasoning.strip()))
             assistant_message: dict[str, Any] = {
                 "role": "assistant",
                 "content": turn.content,
@@ -56,11 +60,14 @@ class LLMInterpreter:
                 return turn.content or ""
 
             for call in turn.tool_calls:
+                self.last_events.append(("tool", call.name))
                 try:
                     result = self._tools.execute(call.name, call.arguments)
                     payload = {"ok": True, "result": result}
+                    self.last_events.append(("tool_result", f"{call.name} 已完成"))
                 except (ToolCallError, ValueError) as exc:
                     payload = {"ok": False, "error": str(exc)}
+                    self.last_events.append(("tool_result", f"{call.name} 执行失败"))
                 self.messages.append({
                     "role": "tool",
                     "tool_call_id": call.id,

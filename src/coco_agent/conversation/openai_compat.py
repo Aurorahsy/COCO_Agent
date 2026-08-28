@@ -144,4 +144,5 @@ class OpenAICompatibleLLM:
                 ))
         except (KeyError, TypeError, json.JSONDecodeError) as exc:
             raise InvalidServiceResponse("模型服务返回了无效的 Function Call。") from exc
-        return AssistantTurn(message.get("content"), tuple(calls))
+        reasoning = message.get("reasoning_content") or message.get("reasoning")
+        return AssistantTurn(message.get("content"), tuple(calls), reasoning)

@@ -1,6 +1,6 @@
 # coco_agent
 
-`coco_agent` 是一个基于 LangGraph 的部署调优 Agent。当前版本实现了最小核心链路：
+`COCO_Agent` 是一个基于 LangGraph 的部署调优 Agent。当前版本实现了最小核心链路：
 
 ```text
 用户自然语言
@@ -28,8 +28,8 @@
 ### 1. 克隆 GitHub 仓库
 
 ```powershell
-git clone https://github.com/Aurorahsy/COCO_Agent.git coco_agent
-cd coco_agent
+git clone https://github.com/Aurorahsy/COCO_Agent.git COCO_Agent
+cd COCO_Agent
 ```
 
 ### 2. 创建并激活 Conda 环境
@@ -52,7 +52,7 @@ python -c "import sys; print(sys.executable)"
 python -m pip install .
 ```
 
-pip 会读取项目根目录中的 `pyproject.toml`，构建 `coco-agent-runtime`，并自动下载、安装全部运行依赖。无需手动逐个安装 LangGraph 或 SQLite checkpoint 包。
+pip 会读取项目根目录中的 `pyproject.toml`，构建 `coco-agent`，并自动下载、安装全部运行依赖。无需手动逐个安装 LangGraph 或 SQLite checkpoint 包。
 
 如果需要修改源码并运行测试，改用开发模式：
 
@@ -75,7 +75,7 @@ python -m pip install -e ".[test]" --no-build-isolation
 ### 4. 验证安装
 
 ```powershell
-coco-agent --help
+coco --help
 ```
 
 看到 `chat` 和 `config` 子命令即表示安装成功。
@@ -85,7 +85,7 @@ coco-agent --help
 启动 Agent：
 
 ```powershell
-coco-agent chat
+coco chat
 ```
 
 首次启动会自动进入一次性配置向导：
@@ -113,22 +113,22 @@ Model:    deepseek-chat
 API Key 输入时不会显示。配置成功后，后续启动会自动复用，不需要重复输入。
 保存前 Agent 会先验证服务地址、模型和 API Key；验证失败不会覆盖已有配置。
 
-如果找不到 `coco-agent` 命令，可以使用等价入口：
+如果找不到 `coco` 命令，可以使用等价入口：
 
 ```powershell
-python -m deployopt_agent.cli chat
+python -m coco_agent.cli chat
 ```
 
 ## 使用
 
 ```powershell
-coco-agent chat
+coco chat
 ```
 
 示例输入：
 
 ```text
-You> 帮我把推理吞吐量优化到 100 requests/s
+❯ 帮我把推理吞吐量优化到 100 requests/s
 ```
 
 模型会根据本地 Skill 和工具 Schema 决定是追问缺失信息，还是调用：
@@ -145,19 +145,19 @@ Agent 不直接信任模型输出。每个 Function Call 都会经过工具白�
 主动更换模型、服务地址或 API Key：
 
 ```powershell
-coco-agent config
+coco config
 ```
 
 查看非敏感配置状态：
 
 ```powershell
-coco-agent config show
+coco config show
 ```
 
 查看唯一配置文件位置：
 
 ```powershell
-coco-agent config path
+coco config path
 ```
 
 配置文件固定保存在代码仓库之外：

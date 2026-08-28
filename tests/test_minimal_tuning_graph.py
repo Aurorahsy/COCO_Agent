@@ -5,16 +5,16 @@ from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from deployopt_agent.capabilities import MockTuningCapability, SqliteOperationStore
-from deployopt_agent.domain.contracts import Criterion, GoalSpec, TaskStatus
-from deployopt_agent.demo import (
+from coco_agent.capabilities import MockTuningCapability, SqliteOperationStore
+from coco_agent.domain.contracts import Criterion, GoalSpec, TaskStatus
+from coco_agent.demo import (
     AllowLowRiskActions,
     DoubleConcurrencyPolicy,
     InMemoryExperience,
     NumericGoalVerifier,
     SimpleReportBuilder,
 )
-from deployopt_agent.graph_app import TuningApplication
+from coco_agent.graph_app import TuningApplication
 
 
 def build_app(tmp_path, *, experience=None):
@@ -110,7 +110,7 @@ def test_operation_store_prevents_duplicate_side_effect(tmp_path):
     stack2, app2, capability2 = build_app(tmp_path)
     with stack2:
         request = first["pending_action"]
-        from deployopt_agent.domain.contracts import ActionRequest
+        from coco_agent.domain.contracts import ActionRequest
 
         result = capability2.execute(ActionRequest(**request))
         assert result.reused is True

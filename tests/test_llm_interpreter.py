@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from deployopt_agent.cli import run_chat
-from deployopt_agent.conversation.interpreter import LLMInterpreter
-from deployopt_agent.conversation.models import AssistantTurn, ToolCall
-from deployopt_agent.conversation.openai_compat import ServiceTimeout
-from deployopt_agent.conversation.tools import RegisteredTool, ToolRegistry
+from coco_agent.cli import run_chat
+from coco_agent.conversation.interpreter import LLMInterpreter
+from coco_agent.conversation.models import AssistantTurn, ToolCall
+from coco_agent.conversation.openai_compat import ServiceTimeout
+from coco_agent.conversation.tools import RegisteredTool, ToolRegistry
 
 
 class TuningScriptedLLM:
@@ -62,6 +62,28 @@ def test_cli_executes_llm_function_call_chain():
         "submit_tuning_task",
         "run_tuning_task",
     ]
+
+
+def test_cli_uses_minimal_prompt_and_displays_model_reasoning():
+    class ReasoningLLM:
+        def complete(self, messages, tools):
+            return AssistantTurn("可以开始。", reasoning="先确认用户目标。")
+
+    prompts = []
+    answers = iter(["开始", "/exit"])
+    output = []
+
+    assert run_chat(
+        ReasoningLLM(),
+        lambda prompt: prompts.append(prompt) or next(answers),
+        output.append,
+    ) == 0
+    assert prompts == ["❯ ", "❯ "]
+    rendered = "\n".join(output)
+    assert "You>" not in rendered
+    assert "Agent>" not in rendered
+    assert "思考  先确认用户目标。" in rendered
+    assert "● coco\n  可以开始。" in rendered
 
 
 class InvalidThenRecoveringLLM:
@@ -152,8 +174,8 @@ def test_cli_retries_timeout_without_duplicating_user_message():
 
 
 def test_configuration_is_saved_only_after_validation(tmp_path, monkeypatch):
-    from deployopt_agent import configuration
-    from deployopt_agent.cli import configure
+    from coco_agent import configuration
+    from coco_agent.cli import configure
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     answers = iter(["https://example.com/v1", "model"])
