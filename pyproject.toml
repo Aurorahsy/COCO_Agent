@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "langgraph>=1.2,<2",
     "langgraph-checkpoint-sqlite>=3.1,<4",
+    "ppxxh>=1,<2",
 ]
 
 [project.scripts]

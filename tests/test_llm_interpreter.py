@@ -26,24 +26,24 @@ class TuningScriptedLLM:
         if self.calls == 1:
             return AssistantTurn(tool_calls=(ToolCall(
                 "call-submit",
-                "submit_tuning_task",
+                "update_tuning_task",
                 {
-                    "objective": "把吞吐量优化到 100",
-                    "metric": "throughput",
-                    "operator": ">=",
-                    "target": 100,
+                    "objective": {
+                        "description": "把吞吐量优化到 100 token/s",
+                        "primary_metric": "throughput_tokens_per_second",
+                        "direction": "meet_target",
+                        "operator": ">=",
+                        "target_value": 100,
+                        "unit": "token/s",
+                    },
+                    "workload": {"input_tokens_min": 1000, "input_tokens_max": 200000},
                 },
             ),))
         if self.calls == 2:
             submit_result = json.loads(messages[-1]["content"])
             task_id = submit_result["result"]["task_id"]
-            return AssistantTurn(tool_calls=(ToolCall(
-                "call-run", "run_tuning_task", {"task_id": task_id}
-            ),))
-        report = json.loads(messages[-1]["content"])["result"]["report"]
-        return AssistantTurn(
-            f"调优完成，吞吐量提升 {report['relative_delta_pct']['throughput']:.0f}%。"
-        )
+            missing = submit_result["result"]["missing_fields"]
+            return AssistantTurn(f"已记录目标，还需要：{', '.join(missing)}。任务 {task_id} 尚未执行。")
 
 
 def test_cli_executes_llm_function_call_chain():
@@ -51,16 +51,19 @@ def test_cli_executes_llm_function_call_chain():
     answers = iter(["帮我把吞吐量优化到 100", "exit"])
     output = []
     assert run_chat(llm, lambda _prompt: next(answers), output.append) == 0
-    assert llm.calls == 3
+    assert llm.calls == 2
     assert {item["function"]["name"] for item in llm.received_tools} == {
-        "submit_tuning_task",
-        "run_tuning_task",
+        "inspect_benchmark_capabilities",
+        "update_tuning_task",
+        "generate_benchmark_workload",
+        "prepare_benchmark_run",
+        "confirm_benchmark_run",
+        "cancel_benchmark_run",
     }
-    assert "吞吐量提升 50%" in "\n".join(output)
+    assert "尚未执行" in "\n".join(output)
     tool_messages = [item for item in llm.seen_messages if item["role"] == "tool"]
     assert [item["name"] for item in tool_messages] == [
-        "submit_tuning_task",
-        "run_tuning_task",
+        "update_tuning_task",
     ]
 
 

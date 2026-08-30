@@ -33,11 +33,16 @@ def _validate(schema: dict[str, Any], value: Any, path: str = "arguments") -> No
         raise ToolCallError(f"{path} must be a number")
     elif expected == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
         raise ToolCallError(f"{path} must be an integer")
+    elif expected == "boolean" and not isinstance(value, bool):
+        raise ToolCallError(f"{path} must be a boolean")
     if "enum" in schema and value not in schema["enum"]:
         raise ToolCallError(f"{path} must be one of {schema['enum']}")
     if isinstance(value, (int, float)) and "exclusiveMinimum" in schema:
         if value <= schema["exclusiveMinimum"]:
             raise ToolCallError(f"{path} must be greater than {schema['exclusiveMinimum']}")
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and "minimum" in schema:
+        if value < schema["minimum"]:
+            raise ToolCallError(f"{path} must be at least {schema['minimum']}")
 
 
 @dataclass(frozen=True)
