@@ -133,14 +133,16 @@ coco chat
 
 模型会根据本地 Skill 和工具 Schema 决定是追问缺失信息，还是调用：
 
-- `submit_tuning_task`
-- `run_tuning_task`
+- `update_tuning_task`
+- `prepare_benchmark_run`
 
-Agent 不直接信任模型输出。每个 Function Call 都会经过工具白名单和参数 Schema 校验，工具结果会回填给模型，再由模型生成最终回答。
+Agent 会持续合并性能目标、SLA、workload、模型、引擎和部署信息。每个 Function Call 都会经过工具白名单、参数 Schema 和执行就绪校验。Benchmark 的准备、确认、运行和结果由 CLI 独立展示。
 
 输入 `exit`、`quit` 或 `退出` 结束会话。
 
 ## 配置管理
+
+Benchmark 工具选择、配置方法和结果口径见 [Benchmark Adapter 使用与结果口径](docs/BENCHMARK_ADAPTERS.md)。
 
 主动更换模型、服务地址或 API Key：
 

@@ -65,6 +65,10 @@ class LLMInterpreter:
                     result = self._tools.execute(call.name, call.arguments)
                     payload = {"ok": True, "result": result}
                     self.last_events.append(("tool_result", f"{call.name} 已完成"))
+                    if isinstance(result.get("ui_event"), dict):
+                        self.last_events.append(
+                            ("ui_event", json.dumps(result["ui_event"], ensure_ascii=False))
+                        )
                 except (ToolCallError, ValueError) as exc:
                     payload = {"ok": False, "error": str(exc)}
                     self.last_events.append(("tool_result", f"{call.name} 执行失败"))

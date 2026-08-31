@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import sys
 import threading
 from collections.abc import Callable
@@ -58,6 +59,32 @@ class TerminalRenderer:
                 self._trace(f"工具  {text}", branch="├─")
             elif kind == "tool_result":
                 self._trace(f"结果  {text}", branch="└─")
+            elif kind == "ui_event":
+                self._ui_event(text)
+
+    def _ui_event(self, raw: str) -> None:
+        event = json.loads(raw)
+        if event.get("kind") not in {"benchmark_plan", "benchmark_execution", "workload_generation"}:
+            return
+        state_labels = {
+            "adapter_unconfigured": "尚未启动 · 执行适配器待配置",
+            "awaiting_confirmation": "等待用户确认",
+            "running": "正在运行",
+            "summarizing": "正在汇总",
+            "completed": "已完成",
+            "failed": "运行失败",
+            "blocked": "尚未启动 · 执行条件不足",
+            "needs_workload": "尚未启动 · 需要工作负载",
+            "cancelled": "已取消",
+        }
+        self._output("◇ Benchmark")
+        if event.get("adapter"):
+            self._output(f"  适配器  {event['adapter']}")
+        self._output(f"  任务  {event.get('task_id', '-')}")
+        self._output(f"  状态  {state_labels.get(event.get('state'), event.get('state', '-'))}")
+        if event.get("message"):
+            self._output(f"  说明  {event['message']}")
+        self._output("")
 
     def _trace(self, text: str, *, branch: str) -> None:
         line = f"  {branch} {text}"
